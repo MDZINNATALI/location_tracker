@@ -2,8 +2,8 @@
 <html lang="bn">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Location Tracker</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+    <title>Live Location Tracker</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -28,6 +28,39 @@
             color: #333;
             margin-bottom: 10px;
         }
+        .status-card {
+            background: #f5f5f5;
+            border-radius: 10px;
+            padding: 15px;
+            margin: 20px 0;
+        }
+        .location-info {
+            font-size: 14px;
+            color: #666;
+            margin: 5px 0;
+            word-wrap: break-word;
+        }
+        .coords {
+            font-size: 16px;
+            font-weight: bold;
+            color: #333;
+            background: #e8f4e8;
+            padding: 10px;
+            border-radius: 8px;
+            margin: 10px 0;
+        }
+        .live-badge {
+            background: #ff4444;
+            color: white;
+            padding: 5px 10px;
+            border-radius: 20px;
+            font-size: 12px;
+            display: inline-block;
+            animation: blink 1s infinite;
+        }
+        @keyframes blink {
+            50% { opacity: 0.5; }
+        }
         button {
             background: #4CAF50;
             color: white;
@@ -36,101 +69,85 @@
             font-size: 18px;
             border-radius: 50px;
             cursor: pointer;
-            margin: 20px 0;
+            margin: 10px 0;
             transition: transform 0.3s;
         }
         button:hover {
             transform: scale(1.05);
-            background: #45a049;
         }
-        #status {
-            margin-top: 20px;
-            padding: 15px;
-            border-radius: 10px;
-            background: #f5f5f5;
-            font-size: 14px;
-            word-wrap: break-word;
-        }
-        .success {
-            background: #d4edda;
-            color: #155724;
-        }
-        .error {
-            background: #f8d7da;
-            color: #721c24;
-        }
-        .info {
-            background: #d1ecf1;
-            color: #0c5460;
-        }
-        .coords {
-            font-weight: bold;
-            font-size: 16px;
-            margin: 10px 0;
+        .link {
+            display: inline-block;
+            margin-top: 15px;
+            color: #667eea;
+            text-decoration: none;
         }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>📍 Location Tracker</h1>
-        <p>আপনার বর্তমান অবস্থান শেয়ার করুন</p>
+        <h1>📍 Live Location Tracker</h1>
+        <div class="live-badge">● LIVE TRACKING</div>
         
-        <button onclick="sendLocation()">📤 আমার লোকেশন পাঠান</button>
-        
-        <div id="status">
-            ⏳ প্রস্তুত... "Send Location" বাটনে ক্লিক করুন
+        <div class="status-card">
+            <div id="status">🟢 ট্র্যাকিং শুরু হচ্ছে...</div>
+            <div id="coords" class="coords">-</div>
+            <div id="accuracy" class="location-info">-</div>
+            <div id="lastUpdate" class="location-info">-</div>
         </div>
+        
+        <button onclick="sendLocationNow()">📤 এখনই লোকেশন পাঠান</button>
+        <br>
+        <a href="/map" class="link" target="_blank">🗺️ লাইভ ম্যাপ দেখুন</a>
+        <br>
+        <a href="/static-map" class="link" target="_blank">🗺️ স্ট্যাটিক ম্যাপ</a>
     </div>
 
     <script>
-        async function sendLocation() {
-            const statusDiv = document.getElementById('status');
-            
+        let watchId = null;
+        let updateCount = 0;
+        
+        // অটো লোকেশন ট্র্যাকিং শুরু করুন
+        function startLiveTracking() {
             if (!navigator.geolocation) {
-                statusDiv.innerHTML = '❌ আপনার ব্রাউজার জিপিএস সাপোর্ট করে না';
-                statusDiv.className = 'error';
+                document.getElementById('status').innerHTML = '❌ আপনার ব্রাউজার GPS সাপোর্ট করে না';
                 return;
             }
             
-            statusDiv.innerHTML = '📍 জিপিএস লোকেশন নেওয়া হচ্ছে...';
-            statusDiv.className = 'info';
+            document.getElementById('status').innerHTML = '📍 GPS লোকেশন নেওয়া হচ্ছে...';
             
-            navigator.geolocation.getCurrentPosition(
+            watchId = navigator.geolocation.watchPosition(
                 async (position) => {
                     const lat = position.coords.latitude;
                     const lon = position.coords.longitude;
+                    const accuracy = position.coords.accuracy;
+                    updateCount++;
                     
-                    statusDiv.innerHTML = `📡 লোকেশন পাওয়া গেছে:<br>
-                        <span class="coords">অক্ষাংশ: ${lat.toFixed(6)}<br>
-                        দ্রাঘিমাংশ: ${lon.toFixed(6)}</span><br>
-                        ⏳ সার্ভারে পাঠানো হচ্ছে...`;
+                    // UI আপডেট করুন
+                    document.getElementById('coords').innerHTML = `${lat.toFixed(6)}°, ${lon.toFixed(6)}°`;
+                    document.getElementById('accuracy').innerHTML = `📡 Accuracy: ±${Math.round(accuracy)}m`;
+                    document.getElementById('lastUpdate').innerHTML = `🕐 শেষ আপডেট: ${new Date().toLocaleTimeString()}`;
+                    document.getElementById('status').innerHTML = `🟢 ট্র্যাকিং সক্রিয় (${updateCount} বার আপডেট)`;
                     
+                    // সার্ভারে পাঠান
                     try {
                         const response = await fetch('/update-location', {
                             method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json',
-                            },
+                            headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({
                                 latitude: lat,
-                                longitude: lon
+                                longitude: lon,
+                                accuracy: accuracy
                             })
                         });
                         
-                        const data = await response.json();
-                        
                         if (response.ok) {
-                            statusDiv.innerHTML = `✅ সফল! আপনার লোকেশন সেভ হয়েছে!<br>
-                                📍 ${lat.toFixed(6)}, ${lon.toFixed(6)}<br>
-                                🗺️ <a href="/get-map" target="_blank">ম্যাপ দেখুন</a>`;
-                            statusDiv.className = 'success';
-                        } else {
-                            statusDiv.innerHTML = '❌ সার্ভার ত্রুটি। আবার চেষ্টা করুন।';
-                            statusDiv.className = 'error';
+                            document.getElementById('status').innerHTML = `✅ লোকেশন পাঠানো হয়েছে (${updateCount})`;
+                            setTimeout(() => {
+                                document.getElementById('status').innerHTML = `🟢 ট্র্যাকিং সক্রিয় (${updateCount} বার আপডেট)`;
+                            }, 1000);
                         }
                     } catch (error) {
-                        statusDiv.innerHTML = '❌ সংযোগ সমস্যা! সার্ভার চলছে কিনা চেক করুন।';
-                        statusDiv.className = 'error';
+                        console.error('Send error:', error);
                     }
                 },
                 (error) => {
@@ -148,11 +165,56 @@
                         default:
                             errorMsg = error.message;
                     }
-                    statusDiv.innerHTML = `❌ ${errorMsg}`;
-                    statusDiv.className = 'error';
+                    document.getElementById('status').innerHTML = `❌ ${errorMsg}`;
+                    document.getElementById('coords').innerHTML = 'GPS না পাওয়া গেছে';
+                },
+                {
+                    enableHighAccuracy: true,
+                    maximumAge: 0,
+                    timeout: 10000
                 }
             );
         }
+        
+        // ম্যানুয়ালি লোকেশন পাঠান
+        async function sendLocationNow() {
+            if (!navigator.geolocation) {
+                alert("GPS সাপোর্ট করে না");
+                return;
+            }
+            
+            document.getElementById('status').innerHTML = '📍 এক্ষুণি লোকেশন নেওয়া হচ্ছে...';
+            
+            navigator.geolocation.getCurrentPosition(
+                async (position) => {
+                    const lat = position.coords.latitude;
+                    const lon = position.coords.longitude;
+                    
+                    const response = await fetch('/update-location', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            latitude: lat,
+                            longitude: lon,
+                            accuracy: position.coords.accuracy
+                        })
+                    });
+                    
+                    if (response.ok) {
+                        document.getElementById('status').innerHTML = '✅ লোকেশন পাঠানো হয়েছে!';
+                        setTimeout(() => {
+                            document.getElementById('status').innerHTML = `🟢 ট্র্যাকিং সক্রিয় (${updateCount} বার আপডেট)`;
+                        }, 2000);
+                    }
+                },
+                (error) => {
+                    document.getElementById('status').innerHTML = '❌ লোকেশন নেওয়া যায়নি';
+                }
+            );
+        }
+        
+        // পেজ লোড হলে শুরু করুন
+        startLiveTracking();
     </script>
 </body>
 </html>

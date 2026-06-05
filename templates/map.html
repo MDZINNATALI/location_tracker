@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Live Tracking Map</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: Arial, sans-serif;
+        }
+        #map {
+            height: 100vh;
+            width: 100%;
+        }
+        .info-panel {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: white;
+            padding: 10px 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+            z-index: 1000;
+            font-size: 12px;
+            min-width: 180px;
+            text-align: center;
+        }
+        .live-badge {
+            background: #ff4444;
+            color: white;
+            padding: 3px 8px;
+            border-radius: 12px;
+            font-size: 10px;
+            display: inline-block;
+            animation: blink 1s infinite;
+        }
+        @keyframes blink {
+            50% { opacity: 0.5; }
+        }
+        .coords {
+            font-weight: bold;
+            color: #333;
+            margin: 5px 0;
+        }
+        .accuracy {
+            font-size: 10px;
+            color: #666;
+        }
+        button {
+            background: #4CAF50;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin-top: 5px;
+            font-size: 11px;
+        }
+        button:hover {
+            background: #45a049;
+        }
+    </style>
+</head>
+<body>
+    <div id="map"></div>
+    <div class="info-panel">
+        <div><span class="live-badge">● LIVE</span> লোকেশন ট্র্যাকিং</div>
+        <div id="coords" class="coords">অপেক্ষা করছে...</div>
+        <div id="timestamp" class="accuracy">-</div>
+        <div id="accuracyText" class="accuracy">-</div>
+        <button onclick="centerMap()">🎯 সেন্টারে নিয়ে যান</button>
+        <button onclick="loadHistory()">📜 ইতিহাস দেখুন</button>
+    </div>
+
+    <script>
+        let map;
+        let marker;
+        let circle;
+        let historyLine;
+        let historyPoints = [];
+        
+        // ম্যাপ ইনিশিয়ালাইজ করুন (ঢাকা সেন্টার করে)
+        map = L.map('map').setView([23.780887, 90.401279], 14);
+        
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> & CartoDB',
+            subdomains: 'abcd',
+            maxZoom: 19
+        }).addTo(map);
+        
+        // লোকেশন আপডেট ফাংশন
+        function updateMap(lat, lon, accuracy, timestamp) {
+            if (!marker) {
+                // প্রথমবার মার্কার তৈরি করুন
+                const customIcon = L.divIcon({
+                    html: '<div style="background: #ff4444; width: 20px; height: 20px; border-radius: 50%; border: 3px solid white; box-shadow: 0 0 10px rgba(0,0,0,0.3);"></div>',
+                    iconSize: [20, 20],
+                    className: 'custom-marker'
+                });
+                marker = L.marker([lat, lon], { icon: customIcon }).addTo(map);
+                marker.bindPopup(`<b>Your Location</b><br>${timestamp}<br>Accuracy: ${Math.round(accuracy)}m`).openPopup();
+                
+                circle = L.circle([lat, lon], {
+                    color: '#4CAF50',
+                    fillColor: '#4CAF50',
+                    fillOpacity: 0.2,
+                    radius: accuracy || 50
+                }).addTo(map);
+                
+                // ম্যাপ সেন্টার করুন
+                map.setView([lat, lon], 16);
+            } else {
+                // মার্কার মুভ করুন
+                marker.setLatLng([lat, lon]);
+                circle.setLatLng([lat, lon]);
+                circle.setRadius(accuracy || 50);
+                marker.setPopupContent(`<b>Your Location</b><br>${timestamp}<br>Accuracy: ${Math.round(accuracy)}m`);
+                
+                // হালকা অ্যানিমেশন
+                marker.openPopup();
+            }
+            
+            // UI আপডেট করুন
+            document.getElementById('coords').innerHTML = `${lat.toFixed(6)}°, ${lon.toFixed(6)}°`;
+            document.getElementById('timestamp').innerHTML = `🕐 ${timestamp}`;
+            document.getElementById('accuracyText').innerHTML = `📡 Accuracy: ±${Math.round(accuracy)}m`;
+            
+            // ইতিহাসে যোগ করুন
+            historyPoints.push([lat, lon]);
+            if (historyPoints.length > 50) historyPoints.shift();
+            
+            if (historyLine) {
+                map.removeLayer(historyLine);
+            }
+            historyLine = L.polyline(historyPoints, { color: '#ff4444', weight: 3, opacity: 0.6 }).addTo(map);
+        }
+        
+        // AJAX দিয়ে লোকেশন ফেচ করুন
+        function fetchLocation() {
+            fetch('/get-location-json')
+                .then(response => response.json())
+                .then(data => {
+                    if (!data.error && data.latitude && data.longitude) {
+                        updateMap(data.latitude, data.longitude, data.accuracy || 50, data.timestamp);
+                    }
+                })
+                .catch(error => console.error('Error:', error));
+        }
+        
+        // ম্যাপ সেন্টার করুন
+        function centerMap() {
+            if (marker) {
+                map.setView(marker.getLatLng(), 16);
+            } else {
+                alert('কোনো লোকেশন এখনো পাইনি');
+            }
+        }
+        
+        // ইতিহাস দেখান
+        function loadHistory() {
+            fetch('/get-history')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.length > 0) {
+                        const bounds = L.latLngBounds(data.map(p => [p.latitude, p.longitude]));
+                        map.fitBounds(bounds);
+                        
+                        // সমস্ত পয়েন্ট দেখান
+                        data.forEach(point => {
+                            L.circleMarker([point.latitude, point.longitude], {
+                                radius: 5,
+                                color: '#0066cc',
+                                fillColor: '#3399ff',
+                                fillOpacity: 0.7
+                            }).addTo(map).bindPopup(`📍 ${point.timestamp}`);
+                        });
+                    }
+                });
+        }
+        
+        // প্রতি 2 সেকেন্ডে লোকেশন ফেচ করুন (লাইভ আপডেট)
+        setInterval(fetchLocation, 2000);
+        
+        // প্রথমবার ফেচ করুন
+        fetchLocation();
+        
+        console.log('Live map started!');
+    </script>
+</body>
+</html>
